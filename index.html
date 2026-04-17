@@ -113,6 +113,14 @@ tr.best td{background:var(--accent-bg);}
 .contact-sub{font-size:12px;color:var(--muted);}
 .contact-actions{display:flex;gap:6px;}
 .cta{padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:transparent;font-size:18px;cursor:pointer;text-decoration:none;display:flex;align-items:center;}
+/* Agents */
+.agent-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;}
+.agent-avatar{width:42px;height:42px;border-radius:50%;background:var(--accent-bg);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.agent-info{flex:1;min-width:0;}
+.agent-name{font-size:15px;font-weight:600;color:var(--text);}
+.agent-agency{font-size:12px;color:var(--muted);margin-top:1px;}
+.agent-actions{display:flex;gap:6px;flex-shrink:0;}
+.agent-modal{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:12px;}
 /* Splash */
 #splash{position:fixed;inset:0;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:16px;}
 #splash h2{font-size:20px;font-weight:600;}
@@ -144,6 +152,7 @@ tr.best td{background:var(--accent-bg);}
   <div class="tab on" onclick="goTab('liste')">Mes biens</div>
   <div class="tab" onclick="goTab('form')">Fiche bien</div>
   <div class="tab" onclick="goTab('compar')">Comparer</div>
+  <div class="tab" onclick="goTab('agents')">Agents</div>
 </div>
 
 <div class="page show" id="page-liste">
@@ -160,6 +169,10 @@ tr.best td{background:var(--accent-bg);}
   <div id="comparContent"></div>
 </div>
 
+<div class="page" id="page-agents">
+  <div id="agentsContent"></div>
+</div>
+
 <div class="save-bar" id="saveBar">
   <button class="btn outline" onclick="goTab('liste')">← Retour</button>
   <button class="btn primary" onclick="saveAndBack()">Enregistrer</button>
@@ -173,7 +186,8 @@ const SUPABASE_KEY = 'sb_publishable_qi3HqLucI14kZBaf7mbijA_VYqd9mBU';
 
 const SB = {
   h: {'Content-Type':'application/json','apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY},
-  url: SUPABASE_URL+'/rest/v1/biens'
+  url: SUPABASE_URL+'/rest/v1/biens',
+  urlAgents: SUPABASE_URL+'/rest/v1/agents'
 };
 
 async function fetchT(url,opts,ms=8000){
@@ -182,7 +196,7 @@ async function fetchT(url,opts,ms=8000){
   catch(e){clearTimeout(t);throw e;}
 }
 
-let biens=[], curId=null, saveTimer=null, chartInst=null;
+let biens=[], agents=[], curId=null, curAgentId=null, saveTimer=null, chartInst=null;
 let currentStatut='etude', chargesMode='mois', simuMode='loyer';
 
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
@@ -192,7 +206,7 @@ function defBien(){
     agence:'',commercial_nom:'',commercial_tel:'',commercial_mail:'',
     prix:0,travaux:0,loyer:0,charges_loc:0,vacance:0,
     tf:0,copro:0,pno:0,gestion:0,
-    commentaire:'',photos:[],docs:[]};
+    commentaire:'',photos:[],docs:[],agent_id:''};
 }
 
 function calc(b){
@@ -269,12 +283,13 @@ function goTab(tab){
   document.querySelectorAll('.page').forEach(p=>p.className='page');
   document.getElementById('page-'+tab).className='page show';
   document.querySelectorAll('.tab').forEach((el,i)=>{
-    el.className='tab'+(['liste','form','compar'][i]===tab?' on':'');
+    el.className='tab'+(['liste','form','compar','agents'][i]===tab?' on':'');
   });
   document.getElementById('saveBar').style.display=tab==='form'?'flex':'none';
   if(tab==='form')renderForm();
   if(tab==='compar')renderCompar();
   if(tab==='liste')renderListe();
+  if(tab==='agents')renderAgents();
   window.scrollTo(0,0);
 }
 
@@ -310,6 +325,7 @@ function readForm(){
   b.agence=gs('f_agence');
   b.commercial_nom=gs('f_cnom'); b.commercial_tel=gs('f_ctel'); b.commercial_mail=gs('f_cmail');
   b.commentaire=gs('f_commentaire');
+  const fai=document.getElementById('f_agent_sel');if(fai&&fai.value)b.agent_id=fai.value;
   const fs=document.getElementById('f_statut'); if(fs)b.statut=fs.value;
   ['prix','travaux','loyer','charges_loc','vacance','gestion'].forEach(k=>{const v=g('f_'+k);if(v!==null)b[k]=+v||0;});
   const m=chargesMode==='mois';
@@ -567,6 +583,7 @@ function renderForm(){
     <!-- CONTACT COMMERCIAL -->
     <div class="card">
       <div class="card-title">Contact commercial</div>
+      <div id="agent_selector">${buildAgentSelector(b)}</div>
       <div class="field"><label>Agence</label>
         <input id="f_agence" value="${b.agence||''}" placeholder="ex : Laforêt Nice" oninput="liveUpdate()">
       </div>
@@ -745,6 +762,142 @@ function renderCompar(){
   });
 }
 
+// ─── DB AGENTS ───────────────────────────────────────
+async function dbLoadAgents(){
+  try{
+    const r=await fetchT(SB.urlAgents+'?order=created_at.asc',{headers:SB.h});
+    if(!r.ok)throw new Error();
+    agents=await r.json();
+    try{localStorage.setItem('immo_agents_cache',JSON.stringify(agents));}catch(_){}
+  }catch(e){
+    try{const c=localStorage.getItem('immo_agents_cache');if(c)agents=JSON.parse(c);}catch(_){}
+  }
+}
+
+async function dbSaveAgent(agent){
+  try{localStorage.setItem('immo_agents_cache',JSON.stringify(agents));}catch(_){}
+  try{
+    const r=await fetchT(SB.urlAgents,{method:'POST',headers:{...SB.h,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify(agent)});
+    if(!r.ok)throw new Error();
+    setSync('ok','Agent sauvegardé ✓');
+  }catch(e){setSync('err','Erreur sauvegarde agent');}
+}
+
+async function dbDeleteAgent(id){
+  agents=agents.filter(a=>a.id!==id);
+  try{localStorage.setItem('immo_agents_cache',JSON.stringify(agents));}catch(_){}
+  try{
+    await fetchT(SB.urlAgents+'?id=eq.'+id,{method:'DELETE',headers:SB.h});
+    setSync('ok','Agent supprimé');
+  }catch(e){}
+}
+
+function defAgent(){return{id:uid(),agence:'',nom:'',tel:'',mail:''};}
+
+// ─── RENDU AGENTS ────────────────────────────────────
+function renderAgents(){
+  const cc=document.getElementById('agentsContent'); if(!cc)return;
+  cc.innerHTML=`
+    <button class="btn primary" onclick="showAgentForm(null)">+ Ajouter un agent</button>
+    <div id="agentFormZone"></div>
+    <div id="agentsList"></div>`;
+  renderAgentsList();
+}
+
+function renderAgentsList(){
+  const el=document.getElementById('agentsList'); if(!el)return;
+  if(!agents.length){
+    el.innerHTML='<div class="empty"><div style="font-size:48px;margin-bottom:12px;">👤</div><p>Aucun agent enregistré.</p></div>';
+    return;
+  }
+  el.innerHTML=agents.map(a=>`
+    <div class="agent-card">
+      <div class="agent-avatar">🏢</div>
+      <div class="agent-info">
+        <div class="agent-name">${a.nom||'(sans nom)'}</div>
+        <div class="agent-agency">${a.agence||''}</div>
+        ${a.tel?`<div style="font-size:12px;color:var(--muted);">📞 ${a.tel}</div>`:''}
+        ${a.mail?`<div style="font-size:12px;color:var(--muted);">✉️ ${a.mail}</div>`:''}
+      </div>
+      <div class="agent-actions">
+        ${a.tel?`<a href="tel:${a.tel}" class="cta">📞</a>`:''}
+        ${a.mail?`<a href="mailto:${a.mail}" class="cta">✉️</a>`:''}
+        <button class="cta" onclick="showAgentForm('${a.id}')">✏️</button>
+        <button class="cta" onclick="deleteAgent('${a.id}')">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+function showAgentForm(id){
+  const zone=document.getElementById('agentFormZone'); if(!zone)return;
+  const a=id?agents.find(x=>x.id===id):defAgent();
+  if(!a)return;
+  if(!id)agents.push(a);
+  curAgentId=a.id;
+  zone.innerHTML=`
+    <div class="agent-modal">
+      <div style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;">${id?'Modifier':'Nouvel'} agent</div>
+      <div class="field"><label>Agence</label><input id="ag_agence" value="${a.agence||''}" placeholder="ex : Laforêt Nice"></div>
+      <div class="field"><label>Nom du commercial</label><input id="ag_nom" value="${a.nom||''}" placeholder="ex : Jean Dupont"></div>
+      <div class="field"><label>Téléphone</label><input id="ag_tel" type="tel" value="${a.tel||''}" placeholder="ex : 06 12 34 56 78"></div>
+      <div class="field"><label>Email</label><input id="ag_mail" type="email" value="${a.mail||''}" placeholder="ex : jean@agence.fr"></div>
+      <div style="display:flex;gap:10px;margin-top:4px;">
+        <button class="btn outline" style="margin-bottom:0;" onclick="cancelAgentForm()">Annuler</button>
+        <button class="btn primary" style="margin-bottom:0;" onclick="saveAgent()">Enregistrer</button>
+      </div>
+    </div>`;
+}
+
+function cancelAgentForm(){
+  if(curAgentId){
+    const a=agents.find(x=>x.id===curAgentId);
+    if(a&&!a.nom&&!a.agence)agents=agents.filter(x=>x.id!==curAgentId);
+  }
+  curAgentId=null;
+  document.getElementById('agentFormZone').innerHTML='';
+  renderAgentsList();
+}
+
+async function saveAgent(){
+  const a=agents.find(x=>x.id===curAgentId); if(!a)return;
+  a.agence=document.getElementById('ag_agence')?.value||'';
+  a.nom=document.getElementById('ag_nom')?.value||'';
+  a.tel=document.getElementById('ag_tel')?.value||'';
+  a.mail=document.getElementById('ag_mail')?.value||'';
+  curAgentId=null;
+  document.getElementById('agentFormZone').innerHTML='';
+  await dbSaveAgent(a);
+  renderAgentsList();
+}
+
+async function deleteAgent(id){
+  if(!confirm('Supprimer cet agent ?'))return;
+  await dbDeleteAgent(id);
+  renderAgentsList();
+}
+
+// Sélecteur d'agent dans la fiche bien
+function buildAgentSelector(b){
+  if(!agents.length)return '';
+  return `<div class="field"><label>Choisir un agent enregistré</label>
+    <select onchange="fillAgentFromSelect(this.value)">
+      <option value="">— Sélectionner —</option>
+      ${agents.map(a=>`<option value="${a.id}" ${b.agent_id===a.id?'selected':''}>${a.agence?a.agence+' — ':''} ${a.nom||''}</option>`).join('')}
+    </select>
+  </div>`;
+}
+
+function fillAgentFromSelect(agentId){
+  const a=agents.find(x=>x.id===agentId); if(!a)return;
+  const b=biens.find(x=>x.id===curId); if(!b)return;
+  b.agent_id=agentId;
+  const fields={f_agence:a.agence,f_cnom:a.nom,f_ctel:a.tel,f_cmail:a.mail};
+  Object.entries(fields).forEach(([id,val])=>{
+    const el=document.getElementById(id); if(el)el.value=val||'';
+  });
+  liveUpdate();
+}
+
 // ─── INIT ────────────────────────────────────────────
 async function init(){
   if(SUPABASE_KEY==='COLLEZ_VOTRE_CLÉ_ANON_ICI'){
@@ -752,7 +905,7 @@ async function init(){
     return;
   }
   const t=setTimeout(()=>{document.getElementById('splash').style.display='none';renderListe();},10000);
-  try{await dbLoad();}catch(e){}
+  try{await Promise.all([dbLoad(), dbLoadAgents()]);}catch(e){}
   clearTimeout(t);
   renderListe();
   document.getElementById('splash').style.display='none';
