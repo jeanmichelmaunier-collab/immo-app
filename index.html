@@ -92,6 +92,16 @@ tr.best td{background:var(--accent-bg);}
 @keyframes spin{to{transform:rotate(360deg);}}
 .etude-badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:600;background:#fff8e1;color:#e65100;margin-left:6px;vertical-align:middle;}
 .proprio-badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:600;background:#e8f5e9;color:#2e7d32;margin-left:6px;vertical-align:middle;}
+.simu-toggle{display:flex;gap:8px;margin-top:4px;}
+.simu-toggle button{flex:1;padding:10px;border:1px solid var(--border);border-radius:9px;background:transparent;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;}
+.simu-toggle button.on{background:var(--accent);color:#fff;border-color:var(--accent);}
+.simu-box{border-radius:10px;padding:14px 16px;margin-bottom:12px;text-align:center;}
+.simu-ok{background:#e8f5e9;}
+.simu-warn{background:#fff8e1;}
+.simu-label{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;}
+.simu-val{font-size:28px;font-weight:700;color:var(--text);margin-bottom:6px;}
+.simu-diff{font-size:13px;color:var(--muted);line-height:1.5;}
+.simu-detail{background:var(--input-bg);border-radius:9px;padding:4px 12px;}
 </style>
 </head>
 <body>
@@ -148,7 +158,7 @@ tr.best td{background:var(--accent-bg);}
 //  ⚙️  CONFIGURATION
 // ════════════════════════════════════════════════════
 const SUPABASE_URL = 'https://pygatxmhajhqvvuzvjsx.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_qi3HqLucI14kZBaf7mbijA_VYqd9mBU';
+const SUPABASE_KEY = 'COLLEZ_VOTRE_CLÉ_ANON_ICI';
 // ════════════════════════════════════════════════════
 
 const SB = {
@@ -457,8 +467,91 @@ function renderForm() {
     </div>
 
     <div id="resultats"></div>
+    <div id="simulateur"></div>
     <button class="btn danger" onclick="deleteBien('${b.id}',{stopPropagation:()=>{}})">Supprimer ce bien</button>`;
   renderResults(b, r);
+  renderSimulateur(b, r);
+}
+
+// ─── RENDU : SIMULATEUR OBJECTIF ─────────────────────
+function renderSimulateur(b, r) {
+  const el = document.getElementById('simulateur'); if(!el) return;
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Simulateur — Objectif rentabilité</div>
+      <div class="field">
+        <label>Rentabilité nette cible (%)</label>
+        <input id="s_cible" type="number" value="5" step="0.5" inputmode="decimal" oninput="updateSimu()">
+      </div>
+      <div class="simu-toggle">
+        <button id="s_btn_loyer" class="on" onclick="setSimuMode('loyer')">Faire varier le loyer</button>
+        <button id="s_btn_invest" onclick="setSimuMode('invest')">Faire varier l'investissement</button>
+      </div>
+      <div id="simu_result" style="margin-top:14px;"></div>
+    </div>`;
+  updateSimu();
+}
+
+let simuMode = 'loyer';
+function setSimuMode(m) {
+  simuMode = m;
+  document.getElementById('s_btn_loyer').className = m==='loyer' ? 'on' : '';
+  document.getElementById('s_btn_invest').className = m==='invest' ? 'on' : '';
+  updateSimu();
+}
+
+function updateSimu() {
+  const el = document.getElementById('simu_result'); if(!el) return;
+  const b = biens.find(x => x.id === curId); if(!b) return;
+  const cible = parseFloat(document.getElementById('s_cible')?.value) || 5;
+  const charges = b.tf + b.copro + b.pno + 0; // gestion ignorée pour simplifier
+
+  if(simuMode === 'loyer') {
+    // Rentabilité nette = (loyer*12*(1-vacance/100) - charges) / invest * 100 = cible
+    // => loyer*12*(1-v) = cible/100 * invest + charges
+    const r = calc(b);
+    const invest = r.invest;
+    const v = b.vacance / 100;
+    const loyer_net_cible = (cible / 100) * invest + charges;
+    const loyer_cible = v < 1 ? loyer_net_cible / (12 * (1 - v)) : 0;
+    const diff = loyer_cible - b.loyer;
+    const ok = diff <= 0;
+    el.innerHTML = `
+      <div class="simu-box ${ok?'simu-ok':'simu-warn'}">
+        <div class="simu-label">Loyer mensuel nécessaire</div>
+        <div class="simu-val">${fE(Math.ceil(loyer_cible))}<span style="font-size:14px;font-weight:400;">/mois</span></div>
+        <div class="simu-diff">${ok ? '✓ Votre loyer actuel ('+fE(b.loyer)+') dépasse l\'objectif' : 'Il faut augmenter de +'+fE(Math.ceil(diff))+'/mois par rapport au loyer actuel ('+fE(b.loyer)+')'}</div>
+      </div>
+      <div class="simu-detail">
+        <div class="brow"><span class="k">Rentabilité actuelle</span><span class="v">${fP(calc(b).rent_nette)}</span></div>
+        <div class="brow"><span class="k">Objectif</span><span class="v">${fP(cible)}</span></div>
+        <div class="brow"><span class="k">Écart de loyer</span><span class="v" style="color:${ok?'var(--green)':'var(--red)'};">${ok?'':'+'}${fE(Math.ceil(diff))}/mois</span></div>
+      </div>`;
+  } else {
+    // Faire varier l'investissement
+    // invest_cible = (loyer_net - charges) / (cible/100)
+    const v = b.vacance / 100;
+    const loyer_net = b.loyer * 12 * (1 - v);
+    const gestion_an = loyer_net * (b.gestion / 100);
+    const charges_tot = b.tf + b.copro + b.pno + gestion_an;
+    const cf = loyer_net - charges_tot;
+    const invest_cible = cible > 0 ? cf / (cible / 100) : 0;
+    // invest = prix + prix*0.06 + travaux => prix = (invest - travaux) / 1.06
+    const prix_max = (invest_cible - b.travaux) / 1.06;
+    const diff = prix_max - b.prix;
+    const ok = diff >= 0;
+    el.innerHTML = `
+      <div class="simu-box ${ok?'simu-ok':'simu-warn'}">
+        <div class="simu-label">Prix maximum à payer</div>
+        <div class="simu-val">${fE(Math.floor(prix_max))}</div>
+        <div class="simu-diff">${ok ? '✓ Votre prix actuel ('+fE(b.prix)+') est en dessous de l\'objectif' : 'Votre prix est trop élevé de '+fE(Math.abs(Math.ceil(diff)))+' par rapport à l\'objectif'}</div>
+      </div>
+      <div class="simu-detail">
+        <div class="brow"><span class="k">Rentabilité actuelle</span><span class="v">${fP(calc(b).rent_nette)}</span></div>
+        <div class="brow"><span class="k">Objectif</span><span class="v">${fP(cible)}</span></div>
+        <div class="brow"><span class="k">Écart sur le prix</span><span class="v" style="color:${ok?'var(--green)':'var(--red)'};">${ok?'-':'+'}${fE(Math.abs(Math.ceil(diff)))}</span></div>
+      </div>`;
+  }
 }
 
 // ─── RENDU : COMPARAISON ─────────────────────────────
