@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Immo Rentabilité</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  :root{
+    --bg:#f5f5f0;--card:#fff;--border:#e5e5e0;--text:#1a1a1a;--muted:#888;
+    --hint:#aaa;--input-bg:#f7f7f5;--green:#2e7d32;--red:#c62828;
+    --orange:#e65100;--accent:#378ADD;--accent-bg:#e8f2fc;
+  }
+  @media(prefers-color-scheme:dark){
+    :root{--bg:#111;--card:#1e1e1e;--border:#2e2e2e;--text:#f0f0f0;--muted:#999;
+    --hint:#555;--input-bg:#272727;--green:#4caf50;--red:#ef5350;
+    --orange:#ff9800;--accent:#64b5f6;--accent-bg:#1a2c3a;}
+  }
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:15px;line-height:1.5;min-height:100vh;}
+  header{background:var(--card);border-bottom:1px solid var(--border);padding:13px 16px;position:sticky;top:0;z-index:200;display:flex;justify-content:space-between;align-items:center;}
+  .logo{font-size:16px;font-weight:600;color:var(--text);}
+  .logo small{font-size:11px;color:var(--muted);font-weight:400;display:block;}
+  .sync{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;}
+  .dot.loading{background:var(--orange);animation:blink 0.8s infinite;}
+  .dot.err{background:var(--red);}
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
+  .tabs{background:var(--card);border-bottom:1px solid var(--border);display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;position:sticky;top:57px;z-index:100;}
+  .tab{padding:12px 18px;font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap;border-bottom:2px solid transparent;cursor:pointer;flex-shrink:0;}
+  .tab.on{color:var(--accent);border-bottom-color:var(--accent);}
+  .page{display:none;padding:16px;max-width:700px;margin:0 auto;padding-bottom:100px;}
+  .page.show{display:block;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;}
+  .card-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;}
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{font-size:13px;font-weight:500;color:var(--muted);}
+  .field input,.field select{padding:12px 13px;border:1px solid var(--border);border-radius:9px;font-size:16px;color:var(--text);background:var(--card);outline:none;width:100%;}
+  .field input:focus,.field select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(55,138,221,0.12);}
+  .field input:disabled{background:var(--input-bg);color:var(--hint);}
+  .hint{font-size:11px;color:var(--hint);margin-top:2px;}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+  @media(min-width:540px){.metrics{grid-template-columns:repeat(4,1fr);}}
+  .metric{background:var(--input-bg);border-radius:10px;padding:13px 14px;}
+  .metric .ml{font-size:11px;color:var(--muted);margin-bottom:4px;font-weight:500;}
+  .metric .mv{font-size:20px;font-weight:600;color:var(--text);}
+  .badge{display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600;margin-top:5px;}
+  .bg{background:#e8f5e9;color:#2e7d32;}.ba{background:#fff8e1;color:#e65100;}.br{background:#fdecea;color:#c62828;}
+  .brow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:14px;}
+  .brow:last-child{border-bottom:none;}
+  .brow .k{color:var(--muted);}
+  .brow .v{font-weight:600;}
+  .pos{color:var(--green);}.neg{color:var(--red);}
+  .btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 18px;border:1px solid var(--border);border-radius:10px;background:var(--card);font-size:15px;font-weight:500;color:var(--text);cursor:pointer;width:100%;margin-bottom:10px;}
+  .btn:active{opacity:0.7;}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn.danger{color:var(--red);border-color:var(--red);background:transparent;}
+  .btn.outline{background:transparent;}
+  .bien-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;}
+  .bien-item.active{border:2px solid var(--accent);background:var(--accent-bg);}
+  .bien-item:active{opacity:0.75;}
+  .bi-name{font-size:15px;font-weight:600;color:var(--text);}
+  .bi-meta{font-size:12px;color:var(--muted);margin-top:2px;}
+  .bi-rent{font-size:16px;font-weight:700;color:var(--accent);}
+  .bi-cf{font-size:11px;color:var(--muted);margin-top:1px;}
+  .del{background:none;border:none;color:var(--hint);font-size:22px;padding:4px 8px;cursor:pointer;line-height:1;border-radius:6px;margin-left:8px;}
+  .del:active{color:var(--red);}
+  .empty{text-align:center;padding:48px 20px;color:var(--muted);}
+  .save-bar{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);padding:12px 16px;display:none;gap:10px;z-index:300;}
+  .save-bar .btn{flex:1;margin-bottom:0;}
+  table{width:100%;border-collapse:collapse;}
+  th{text-align:right;padding:8px 6px;font-weight:600;color:var(--muted);border-bottom:2px solid var(--border);font-size:12px;}
+  th:first-child{text-align:left;}
+  td{padding:9px 6px;text-align:right;border-bottom:1px solid var(--border);font-size:12px;}
+  td:first-child{text-align:left;}
+  tr.best td{background:var(--accent-bg);}
+  #splash{position:fixed;inset:0;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:16px;}
+  #splash h2{font-size:20px;font-weight:600;}
+  #splash p{font-size:14px;color:var(--muted);text-align:center;max-width:280px;}
+  .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<div id="splash">
+  <div class="spinner"></div>
+  <h2>Immo Rentabilité</h2>
+  <p>Connexion à la base de données...</p>
+</div>
+
+<header>
+  <div class="logo">Immo Rentabilité <small>acquisition comptant</small></div>
+  <div class="sync"><span class="dot" id="dot"></span><span id="syncTxt">...</span></div>
+</header>
+
+<div class="tabs">
+  <div class="tab on" onclick="goTab('liste')">Mes biens</div>
+  <div class="tab" onclick="goTab('form')">Fiche bien</div>
+  <div class="tab" onclick="goTab('compar')">Comparer</div>
+</div>
+
+<div class="page show" id="page-liste">
+  <button class="btn primary" onclick="addBien()">+ Ajouter un bien</button>
+  <div id="bienList"></div>
+</div>
+
+<div class="page" id="page-form">
+  <div id="formContent"></div>
+  <div style="height:80px;"></div>
+</div>
+
+<div class="page" id="page-compar">
+  <div id="comparContent"></div>
+</div>
+
+<div class="save-bar" id="saveBar">
+  <button class="btn outline" onclick="goTab('liste')">← Retour</button>
+  <button class="btn primary" onclick="saveAndBack()">Enregistrer</button>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════
+//  ⚙️  CONFIGURATION — COLLEZ VOTRE CLÉ ICI
+// ════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://pygatxmhajhqvvuzvjsx.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_qi3HqLucI14kZBaf7mbijA_VYqd9mBU';
+// ════════════════════════════════════════════════════════
+
+// ─── SUPABASE API ────────────────────────────────────────
+const SB = {
+  headers: {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_KEY,
+    'Authorization': 'Bearer ' + SUPABASE_KEY
+  },
+  url: SUPABASE_URL + '/rest/v1/biens',
+
+  async getAll() {
+    const r = await fetch(this.url + '?order=created_at.asc', { headers: this.headers });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+
+  async upsert(bien) {
+    const r = await fetch(this.url, {
+      method: 'POST',
+      headers: { ...this.headers, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(bien)
+    });
+    if (!r.ok) throw new Error(await r.text());
+  },
+
+  async delete(id) {
+    const r = await fetch(this.url + '?id=eq.' + id, {
+      method: 'DELETE',
+      headers: this.headers
+    });
+    if (!r.ok) throw new Error(await r.text());
+  }
+};
+
+// ─── ÉTAT ────────────────────────────────────────────────
+let biens = [], curId = null, saveTimer = null, chartInst = null;
+
+// ─── UTILITAIRES ─────────────────────────────────────────
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+function defBien(n) {
+  return { id: uid(), nom: 'Bien ' + n, adresse: '', prix: 200000, travaux: 0,
+    loyer: 900, charges_loc: 80, vacance: 5, tf: 1000, copro: 1200, pno: 250, gestion: 0 };
+}
+
+function calc(b) {
+  const notaire = Math.round(b.prix * 0.06);
+  const invest = b.prix + notaire + b.travaux;
+  const loyer_net = b.loyer * 12 * (1 - b.vacance / 100);
+  const gestion_an = loyer_net * (b.gestion / 100);
+  const charges = b.tf + b.copro + b.pno + gestion_an;
+  const rent_brute = invest > 0 ? (b.loyer * 12 / invest) * 100 : 0;
+  const rent_nette = invest > 0 ? ((loyer_net - charges) / invest) * 100 : 0;
+  const cf_an = loyer_net - charges;
+  return { notaire, invest, loyer_net, charges, rent_brute, rent_nette, cf_an, cf_m: cf_an / 12 };
+}
+
+function fE(n) { return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' €'; }
+function fP(n) { return (+n).toFixed(2).replace('.', ',') + ' %'; }
+function bdg(v) { return v >= 5 ? '<span class="badge bg">Excellent</span>' : v >= 3 ? '<span class="badge ba">Correct</span>' : '<span class="badge br">Faible</span>'; }
+function bdgCF(v) { return v >= 100 ? '<span class="badge bg">Positif</span>' : v >= 0 ? '<span class="badge ba">Équilibré</span>' : '<span class="badge br">Négatif</span>'; }
+
+function setSync(state, txt) {
+  const d = document.getElementById('dot'), t = document.getElementById('syncTxt');
+  d.className = 'dot' + (state === 'loading' ? ' loading' : state === 'err' ? ' err' : '');
+  if (t) t.textContent = txt;
+}
+
+// ─── BASE DE DONNÉES ─────────────────────────────────────
+async function dbLoad() {
+  setSync('loading', 'Chargement...');
+  try {
+    biens = await SB.getAll();
+    setSync('ok', biens.length + ' bien(s) chargé(s)');
+  } catch (e) {
+    setSync('err', 'Erreur connexion');
+    console.error(e);
+    biens = [];
+  }
+}
+
+async function dbSave(bien) {
+  setSync('loading', 'Sauvegarde...');
+  try {
+    await SB.upsert(bien);
+    setSync('ok', 'Synchronisé ✓');
+  } catch (e) {
+    setSync('err', 'Erreur sauvegarde');
+    console.error(e);
+  }
+}
+
+async function dbDelete(id) {
+  setSync('loading', 'Suppression...');
+  try {
+    await SB.delete(id);
+    setSync('ok', 'Synchronisé ✓');
+  } catch (e) {
+    setSync('err', 'Erreur suppression');
+  }
+}
+
+// ─── FORMULAIRE → OBJET ──────────────────────────────────
+function readForm() {
+  if (!curId) return null;
+  const b = biens.find(x => x.id === curId); if (!b) return null;
+  const g = id => { const el = document.getElementById(id); if (!el) return null; const v = el.value; return v === '' ? null : isNaN(+v) ? v : +v; };
+  const fn = document.getElementById('f_nom'); if (fn && fn.value) b.nom = fn.value;
+  const fa = document.getElementById('f_adresse'); if (fa) b.adresse = fa.value;
+  ['prix','travaux','loyer','charges_loc','vacance','tf','copro','pno','gestion'].forEach(k => {
+    const v = g('f_' + k); if (v !== null) b[k] = v;
+  });
+  return b;
+}
+
+function saveForm() { readForm(); }
+
+function liveUpdate() {
+  const b = readForm(); if (!b) return;
+  const r = calc(b);
+  const nd = document.getElementById('f_notaire_disp'); if (nd) nd.value = r.notaire;
+  renderResults(b, r);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => dbSave(b), 1000);
+}
+
+// ─── NAVIGATION ──────────────────────────────────────────
+function goTab(tab) {
+  if (tab === 'form' && !curId) return;
+  document.querySelectorAll('.page').forEach(p => p.className = 'page');
+  document.getElementById('page-' + tab).className = 'page show';
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    el.className = 'tab' + (['liste','form','compar'][i] === tab ? ' on' : '');
+  });
+  document.getElementById('saveBar').style.display = tab === 'form' ? 'flex' : 'none';
+  if (tab === 'form') renderForm();
+  if (tab === 'compar') renderCompar();
+  if (tab === 'liste') renderListe();
+  window.scrollTo(0, 0);
+}
+
+// ─── CRUD ────────────────────────────────────────────────
+async function addBien() {
+  const b = defBien(biens.length + 1);
+  biens.push(b); curId = b.id;
+  await dbSave(b);
+  goTab('form');
+}
+
+function selectBien(id) { curId = id; goTab('form'); }
+
+async function deleteBien(id, e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  if (!confirm('Supprimer ce bien ?')) return;
+  biens = biens.filter(b => b.id !== id);
+  if (curId === id) curId = biens.length ? biens[0].id : null;
+  await dbDelete(id);
+  goTab('liste');
+}
+
+async function saveAndBack() {
+  const b = readForm();
+  if (b) await dbSave(b);
+  goTab('liste');
+}
+
+// ─── RENDU : LISTE ───────────────────────────────────────
+function renderListe() {
+  const el = document.getElementById('bienList');
+  if (!biens.length) {
+    el.innerHTML = `<div class="empty"><div style="font-size:48px;margin-bottom:12px;">🏠</div><p style="font-size:15px;line-height:1.7;">Aucun bien enregistré.<br>Ajoutez votre premier bien.</p></div>`;
+    return;
+  }
+  el.innerHTML = biens.map(b => {
+    const r = calc(b);
+    return `<div class="bien-item ${b.id === curId ? 'active' : ''}" onclick="selectBien('${b.id}')">
+      <div style="flex:1;min-width:0;">
+        <div class="bi-name">${b.nom}</div>
+        <div class="bi-meta">${b.adresse || fE(b.prix)}</div>
+        <div style="margin-top:5px;">${bdgCF(r.cf_m)}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;margin-left:10px;">
+        <div class="bi-rent">${fP(r.rent_nette)}</div>
+        <div class="bi-cf">${fE(r.cf_m)}/mois</div>
+      </div>
+      <button class="del" onclick="deleteBien('${b.id}',event)">×</button>
+    </div>`;
+  }).join('');
+}
+
+// ─── RENDU : RÉSULTATS ───────────────────────────────────
+function renderResults(b, r) {
+  const el = document.getElementById('resultats'); if (!el) return;
+  el.innerHTML = `
+    <div class="metrics">
+      <div class="metric"><div class="ml">Investissement total</div><div class="mv">${fE(r.invest)}</div></div>
+      <div class="metric"><div class="ml">Rentabilité brute</div><div class="mv">${fP(r.rent_brute)}</div>${bdg(r.rent_brute)}</div>
+      <div class="metric"><div class="ml">Rentabilité nette</div><div class="mv">${fP(r.rent_nette)}</div>${bdg(r.rent_nette)}</div>
+      <div class="metric"><div class="ml">Cash-flow mensuel</div><div class="mv" style="color:${r.cf_m >= 0 ? 'var(--green)' : 'var(--red)'}">${fE(r.cf_m)}</div>${bdgCF(r.cf_m)}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Bilan annuel</div>
+      <div class="brow"><span class="k">Loyers perçus (après vacance)</span><span class="v pos">+${fE(r.loyer_net)}</span></div>
+      <div class="brow"><span class="k">Charges propriétaire</span><span class="v neg">−${fE(r.charges)}</span></div>
+      <div class="brow"><span class="k" style="font-weight:600;">Cash-flow net annuel</span>
+        <span class="v" style="color:${r.cf_an >= 0 ? 'var(--green)' : 'var(--red)'};font-size:16px;">${r.cf_an >= 0 ? '+' : ''}${fE(r.cf_an)}</span></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Détail acquisition</div>
+      <div class="brow"><span class="k">Prix du bien</span><span class="v">${fE(b.prix)}</span></div>
+      <div class="brow"><span class="k">Frais de notaire (6%)</span><span class="v">${fE(r.notaire)}</span></div>
+      <div class="brow"><span class="k">Travaux</span><span class="v">${fE(b.travaux)}</span></div>
+      <div class="brow"><span class="k" style="font-weight:600;">Total investi</span><span class="v" style="font-size:16px;">${fE(r.invest)}</span></div>
+    </div>`;
+}
+
+// ─── RENDU : FORMULAIRE ──────────────────────────────────
+function renderForm() {
+  const fc = document.getElementById('formContent');
+  if (!curId || !biens.find(x => x.id === curId)) {
+    fc.innerHTML = '<div class="empty"><p>Sélectionnez un bien.</p></div>'; return;
+  }
+  const b = biens.find(x => x.id === curId), r = calc(b);
+  fc.innerHTML = `
+    <div class="card">
+      <div class="field"><label>Nom du bien</label><input id="f_nom" value="${b.nom}" oninput="liveUpdate()"></div>
+      <div class="field"><label>Adresse (optionnel)</label><input id="f_adresse" value="${b.adresse || ''}" placeholder="ex : 12 rue de la Paix, Nice" oninput="liveUpdate()"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Acquisition</div>
+      <div class="field"><label>Prix du bien (€)</label><input id="f_prix" type="number" value="${b.prix}" step="1000" inputmode="numeric" oninput="liveUpdate()"></div>
+      <div class="g2">
+        <div class="field"><label>Frais de notaire</label><input id="f_notaire_disp" type="number" value="${r.notaire}" disabled><span class="hint">Calculé auto. (6%)</span></div>
+        <div class="field"><label>Travaux (€)</label><input id="f_travaux" type="number" value="${b.travaux}" step="500" inputmode="numeric" oninput="liveUpdate()"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Revenus locatifs</div>
+      <div class="field"><label>Loyer mensuel HC (€)</label><input id="f_loyer" type="number" value="${b.loyer}" step="50" inputmode="numeric" oninput="liveUpdate()"></div>
+      <div class="g2">
+        <div class="field"><label>Charges récup./mois (€)</label><input id="f_charges_loc" type="number" value="${b.charges_loc}" inputmode="numeric" oninput="liveUpdate()"></div>
+        <div class="field"><label>Vacance locative (%)</label><input id="f_vacance" type="number" value="${b.vacance}" min="0" max="50" inputmode="decimal" oninput="liveUpdate()"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Charges annuelles propriétaire</div>
+      <div class="g2">
+        <div class="field"><label>Taxe foncière (€/an)</label><input id="f_tf" type="number" value="${b.tf}" inputmode="numeric" oninput="liveUpdate()"></div>
+        <div class="field"><label>Copropriété (€/an)</label><input id="f_copro" type="number" value="${b.copro}" inputmode="numeric" oninput="liveUpdate()"></div>
+        <div class="field"><label>Assurance PNO (€/an)</label><input id="f_pno" type="number" value="${b.pno}" inputmode="numeric" oninput="liveUpdate()"></div>
+        <div class="field"><label>Gestion locative (%)</label><input id="f_gestion" type="number" value="${b.gestion}" inputmode="decimal" oninput="liveUpdate()"></div>
+      </div>
+    </div>
+    <div id="resultats"></div>
+    <button class="btn danger" onclick="deleteBien('${b.id}',{stopPropagation:()=>{}})">Supprimer ce bien</button>`;
+  renderResults(b, r);
+}
+
+// ─── RENDU : COMPARAISON ─────────────────────────────────
+function renderCompar() {
+  const cc = document.getElementById('comparContent');
+  if (!biens.length) { cc.innerHTML = '<div class="empty"><p>Aucun bien à comparer.</p></div>'; return; }
+  const rows = biens.map(b => ({ b, r: calc(b) }));
+  const best = rows.reduce((a, x) => x.r.rent_nette > a.r.rent_nette ? x : a, rows[0]);
+  cc.innerHTML = `
+    <div class="card" style="overflow-x:auto;padding:12px;">
+      <div class="card-title" style="padding:0 4px 8px;">Tableau comparatif</div>
+      <table>
+        <thead><tr>
+          <th style="text-align:left;">Bien</th>
+          <th>Investi</th><th>Loyer</th><th>R.brute</th><th>R.nette</th><th>CF/mois</th>
+        </tr></thead>
+        <tbody>${rows.map(({ b, r }) => `
+          <tr class="${b.id === best.b.id ? 'best' : ''}">
+            <td><div style="font-weight:600;font-size:13px;">${b.nom}${b.id === best.b.id ? ' <span class="badge bg" style="font-size:9px;">Top</span>' : ''}</div></td>
+            <td>${fE(r.invest)}</td><td>${fE(b.loyer)}</td>
+            <td>${fP(r.rent_brute)}</td>
+            <td style="font-weight:700;">${fP(r.rent_nette)}</td>
+            <td style="font-weight:700;color:${r.cf_m >= 0 ? 'var(--green)' : 'var(--red)'};">${fE(r.cf_m)}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Graphique rentabilité</div>
+      <div style="display:flex;gap:14px;margin-bottom:10px;font-size:12px;color:var(--muted);">
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#85B7EB;display:inline-block;"></span>Brute</span>
+        <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#5DCAA5;display:inline-block;"></span>Nette</span>
+      </div>
+      <div style="position:relative;height:${Math.max(200, biens.length * 60 + 80)}px;">
+        <canvas id="cChart" role="img" aria-label="Comparaison des rentabilités"></canvas>
+      </div>
+    </div>`;
+  if (chartInst) { chartInst.destroy(); chartInst = null; }
+  const dark = matchMedia('(prefers-color-scheme:dark)').matches;
+  chartInst = new Chart(document.getElementById('cChart'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(x => x.b.nom),
+      datasets: [
+        { label: 'Brute %', data: rows.map(x => +x.r.rent_brute.toFixed(2)), backgroundColor: '#85B7EB', borderColor: '#185FA5', borderWidth: 1, borderRadius: 5 },
+        { label: 'Nette %', data: rows.map(x => +x.r.rent_nette.toFixed(2)), backgroundColor: '#5DCAA5', borderColor: '#0F6E56', borderWidth: 1, borderRadius: 5 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { ticks: { callback: v => v + '%', font: { size: 11 }, color: dark ? '#999' : '#888' }, grid: { color: dark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)' } },
+        x: { ticks: { font: { size: 11 }, color: dark ? '#999' : '#888' }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+// ─── DÉMARRAGE ───────────────────────────────────────────
+async function init() {
+  if (SUPABASE_KEY === 'COLLEZ_VOTRE_CLÉ_ANON_ICI') {
+    document.getElementById('splash').innerHTML = `
+      <div style="text-align:center;padding:20px;max-width:320px;">
+        <div style="font-size:36px;margin-bottom:12px;">⚙️</div>
+        <h2 style="margin-bottom:8px;">Configuration requise</h2>
+        <p style="color:var(--muted);line-height:1.6;">Ouvrez le fichier <code>index.html</code> et remplacez <code>COLLEZ_VOTRE_CLÉ_ANON_ICI</code> par votre clé Supabase anon.</p>
+      </div>`;
+    return;
+  }
+  await dbLoad();
+  if (biens.length) curId = biens[0].id;
+  renderListe();
+  document.getElementById('splash').style.display = 'none';
+}
+
+init();
+</script>
+</body>
+</html>
